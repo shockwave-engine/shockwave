@@ -16,10 +16,6 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - name: Install dependencies 
-      if: ${{ matrix.os == "macos-latest" }}
-      run: sudo apt install lcov xorg-dev
-
     - uses: actions/checkout@v4
 
     - name: Configure CMake

@@ -13,15 +13,17 @@ macro(shockwave_set_compile_options target)
 endmacro()
 
 # This is setup for linux only
+# LCOV fails to detect unused methods defined in headers (inline)
 macro(shockwave_coverage target)
     include(CodeCoverage)
 
     if(NOT MSVC)
-        append_coverage_compiler_flags_to_target(${target})
+        append_coverage_compiler_flags()
+        # append_coverage_compiler_flags_to_target(${target})
 
         setup_target_for_coverage_lcov(
-            NAME ${target}-coverage EXECUTABLE ${target} EXCLUDE "test/*"
-            "*/catch2/*"
+            NAME ${target}-coverage EXECUTABLE ${target} EXCLUDE "*/catch2/*"
+            "/usr/include/*" "test/*"
         )
 
         add_custom_target(

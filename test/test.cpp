@@ -2,4 +2,8 @@
 
 #include "shockwave/shockwave.h"
 
-TEST_CASE("Assertion") { REQUIRE(1 == 1); }
+TEST_CASE("Assertion") {
+    shock();
+    bla();
+    REQUIRE(1 == 1);
+}
