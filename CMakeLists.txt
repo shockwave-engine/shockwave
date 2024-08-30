@@ -41,7 +41,7 @@ target_include_directories(
                      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-add_subdirectory(include/shockwave)
+add_subdirectory(include/)
 add_subdirectory(src/)
 
 ############################################################
@@ -91,22 +91,13 @@ endif()
 # Installation
 ############################################################
 
-# https://cmake.org/cmake/help/latest/guide/importing-exporting/index.html
-
 install(
     TARGETS shockwave
     EXPORT shockwave
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    INCLUDES
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} FILE_SET HEADERS
 )
-
-# TODO: See docs to use target_sources file sets for headers
-#       Or use the install(DIRECTORY) form
-#
-# install(FILES ${shockwave_headers} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(
     EXPORT shockwave
@@ -120,9 +111,6 @@ configure_package_config_file(
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shockwave
 )
 
-# TODO: Handle versions
-
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/shockwave-config.cmake"
-              # "${CMAKE_CURRENT_BINARY_DIR}/shockwave-config-version.cmake"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shockwave
 )
