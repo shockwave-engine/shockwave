@@ -17,7 +17,7 @@ macro(shockwave_coverage target)
     include(CodeCoverage)
 
     if(NOT MSVC)
-        append_coverage_compiler_flags_to_target(YOUR_TARGET_NAME)
+        append_coverage_compiler_flags_to_target(${target})
 
         setup_target_for_coverage_lcov(
             NAME ${target}-coverage EXECUTABLE ${target} EXCLUDE "test/*"

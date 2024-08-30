@@ -19,6 +19,9 @@ def project_root() -> str:
 def build_dir(build_type: str) -> str:
     return f'{project_root()}/out/{build_type}'
 
+# TODO
+# def required_options(targets: list[str]) -> list[str]:
+
 
 def parse_args(args: list[str]) -> Namespace:
     parser = ArgumentParser()
@@ -48,10 +51,15 @@ def parse_args(args: list[str]) -> Namespace:
 def main(argv):
     args = parse_args(argv)
 
+    print("Configuring...")
     run(['cmake',
          '-B', build_dir(args.build_type),
-        f'-DCMAKE_BUILD_TYPE={args.build_type}'])
+        f'-DCMAKE_BUILD_TYPE={args.build_type}',
+         '-DSHOCKWAVE_BUILD_TESTS:BOOL=ON',
+         '-DSHOCKWAVE_TEST_COVERAGE:BOOL=ON'
+         ])
 
+    print("Building...")
     run(['cmake',
          '--build', build_dir(args.build_type),
          '--config', f'{args.build_type}',

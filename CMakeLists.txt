@@ -11,6 +11,7 @@ include(macros)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -77,7 +78,7 @@ if(SHOCKWAVE_BUILD_TESTS)
     add_subdirectory(test)
 
     if(SHOCKWAVE_TEST_COVERAGE)
-        simu_coverage(shockwave-test)
+        shockwave_coverage(shockwave-test)
     endif()
 endif()
 
