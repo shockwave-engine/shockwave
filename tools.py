@@ -50,17 +50,20 @@ def needs_tests(targets: list[str]) -> bool:
 
 def required_options(targets: list[str]) -> list[str]:
     return [
+        option('CMAKE_EXPORT_COMPILE_COMMANDS', True),
         option('SHOCKWAVE_BUILD_TESTS', needs_tests(targets)),
         option('SHOCKWAVE_TEST_COVERAGE', needs_coverage(targets))
     ]
 
 
 def build(args: Namespace):
+    if args.targets is not None and isinstance(args.targets, str):
+        args.targets = [args.targets]
+
     execute('Configuring', ['cmake',
                             '-B', build_dir(args.build_type),
                             f'-DCMAKE_BUILD_TYPE={args.build_type}',
-                            *required_options(args.targets)
-                            ])
+                            *required_options(args.targets)])
 
     execute('Building', ['cmake',
                          '--build', build_dir(args.build_type),
@@ -87,9 +90,10 @@ def add_build_args(parser: ArgumentParser, targets=['shockwave', 'shockwave-test
                         default='all',
                         nargs='*',
                         help='The target(s) to build')
+
     parser.add_argument('--build-type',
                         choices=['Debug', 'Release',
-                                 'RelWithDebInfo', 'MinSize'],
+                                 'RelWithDebInfo', 'MinSizeRel'],
                         default='Debug',
                         help='The CMake build type to build')
 
@@ -106,13 +110,16 @@ def parse_args(args: list[str]) -> Namespace:
     add_build_args(run_parser, targets=['shockwave-test'])
     run_parser.set_defaults(func=run)
 
-    parsed = parser.parse_args(args)
+    subparsers.add_parser('test').set_defaults(
+        func=lambda _: main(['run', 'shockwave-test']))
 
-    # Cannot set default as list
-    if parsed.targets is not None and isinstance(parsed.targets, str):
-        parsed.targets = [parsed.targets]
+    subparsers.add_parser('coverage').set_defaults(
+        func=lambda _: main(['build', 'shockwave-test-coverage']))
 
-    return parsed
+    subparsers.add_parser('coverage-view').set_defaults(
+        func=lambda _: main(['build', 'shockwave-test-coverage-viewer']))
+
+    return parser.parse_args(args)
 
 
 def main(argv):

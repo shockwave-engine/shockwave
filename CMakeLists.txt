@@ -45,6 +45,17 @@ target_include_directories(
 add_subdirectory(include/)
 add_subdirectory(src/)
 
+# clangd only supports a single CompilationDatabase location.
+# -> Copy the compile commands from out/[Debug | Release | ...] to out/
+add_custom_command(
+    TARGET shockwave
+    POST_BUILD
+    COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/out/compile_commands.json
+)
+
 ############################################################
 # Tests
 ############################################################
