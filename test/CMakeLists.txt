@@ -1,1 +1,1 @@
-target_sources(shockwave-test PRIVATE test.cpp)
+target_sources(shockwave-test PRIVATE memory/allocator.cpp test.cpp)
