@@ -1,0 +1,15 @@
+name: Setup tooling
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12' 
+
+    - run: pip install clang-format==18.1.8
+      shell: bash
+
+    - if: ${{ runner.os == 'Linux' }}
+      run: sudo apt install lcov
+      shell: bash
