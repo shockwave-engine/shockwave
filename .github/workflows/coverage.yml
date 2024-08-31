@@ -1,0 +1,25 @@
+name: Coverage
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Test & publish code coverage
+      uses: paambaati/codeclimate-action@v9.0.0
+      env:
+        CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+      with:
+        coverageCommand: ./tools.py coverage
+        coverageLocations: ${{ github.workspace }}/out/Debug/shockwave-test-coverage.info:lcov
+
