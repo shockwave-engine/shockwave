@@ -51,9 +51,10 @@ add_custom_command(
     TARGET shockwave
     POST_BUILD
     COMMAND
-        ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json
-        ${CMAKE_CURRENT_SOURCE_DIR}/out/compile_commands.json
+        ${CMAKE_COMMAND}
+        "-DFROM=${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json"
+        "-DTO=${CMAKE_CURRENT_SOURCE_DIR}/out/compile_commands.json" -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy-if-exists.cmake
 )
 
 ############################################################
