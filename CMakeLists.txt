@@ -55,7 +55,7 @@ if(SHOCKWAVE_BUILD_TESTS)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG 3f0283d # v3.3.2
+        GIT_TAG 31588bb # V3.7.0
     )
 
     FetchContent_MakeAvailable(Catch2)
