@@ -46,7 +46,7 @@ public:
         static constexpr std::size_t gen_bits   = generation_bits;
 
         static_assert(generation_bits < total_bits,
-                      "Must keep at least one bit for the index");
+                      "Must keep at least one bit to encode existence");
 
         Index(std::size_t index, std::size_t generation)
             : value(make_index(index, generation)) {
@@ -107,8 +107,6 @@ public:
         reallocate();
     }
 
-    // TODO: Take / give_back should call constructors / destructors..?
-
     Index take() {
         if ( free_list.empty() ) {
             reallocate();
@@ -142,8 +140,6 @@ public:
             return std::nullopt;
         }
     }
-
-    // TODO: Iterator -> view over set generations
 
 private:
 

@@ -44,16 +44,10 @@ TEST_CASE("memory/Pool") {
         Index second_of_first_gen{1, 0};
         REQUIRE(first_gen < second_of_first_gen);
     }
-}
 
-TEMPLATE_PRODUCT_TEST_CASE_SIG("memory/Pool",
-                               "[template][product][nttp]",
-                               ((typename T, size_t S), T, S),
-                               Pool,
-                               ((int, 8), (int, 0))) {
     SECTION("Pool") {
-        TestType pool;
-        using Index = TestType::Index;
+        Pool<int, 0> pool;
+        using Index = Pool<int, 0>::Index;
 
         SECTION("Bad index returns nullopt") {
             REQUIRE(pool.get(Index{0, 0}) == std::nullopt);
@@ -76,12 +70,37 @@ TEMPLATE_PRODUCT_TEST_CASE_SIG("memory/Pool",
             REQUIRE(pool.get(index) == std::nullopt);
 
             index = pool.take();
-            if constexpr ( Index::gen_bits == 0 ) {
-                REQUIRE(index == Index{0, 0});
-            } else {
-                REQUIRE(index != Index{0, 0});  // can give {2, 0} or {0, 1}
-                REQUIRE(pool.get(Index{0, 0}) == std::nullopt);
-            }
+            REQUIRE(index == Index{0, 0});
+        }
+    }
+
+    SECTION("Generational Pool") {
+        Pool<int, 8> pool;
+        using Index = Pool<int, 8>::Index;
+
+        SECTION("Bad index returns nullopt") {
+            REQUIRE(pool.get(Index{0, 0}) == std::nullopt);
+        }
+
+        SECTION("Can take objects and give them back") {
+            auto index = pool.take();
+            REQUIRE(index == Index{0, 0});
+
+            REQUIRE(pool.get(index).has_value());
+
+            int* value = *pool.get(index);
+            *value     = 10;
+            REQUIRE(**pool.get(index) == 10);
+
+            auto index2 = pool.take();
+            REQUIRE(index2 == Index{1, 0});
+
+            pool.give_back(index);
+            REQUIRE(pool.get(index) == std::nullopt);
+
+            index = pool.take();
+            REQUIRE(index != Index{0, 0});  // can give {2, 0} or {0, 1}
+            REQUIRE(pool.get(Index{0, 0}) == std::nullopt);
         }
     }
 }
