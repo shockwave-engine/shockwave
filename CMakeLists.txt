@@ -45,17 +45,7 @@ target_include_directories(
 add_subdirectory(include/)
 add_subdirectory(src/)
 
-# clangd only supports a single CompilationDatabase location.
-# -> Copy the compile commands from out/[Debug | Release | ...] to out/
-add_custom_command(
-    TARGET shockwave
-    POST_BUILD
-    COMMAND
-        ${CMAKE_COMMAND}
-        "-DFROM=${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json"
-        "-DTO=${CMAKE_CURRENT_SOURCE_DIR}/out/compile_commands.json" -P
-        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy-if-exists.cmake
-)
+generates_compile_commands(shockwave)
 
 ############################################################
 # Tests
@@ -65,7 +55,7 @@ if(SHOCKWAVE_BUILD_TESTS)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG 3f0283d # v3.3.2
+        GIT_TAG 31588bb # V3.7.0
     )
 
     FetchContent_MakeAvailable(Catch2)
@@ -86,6 +76,8 @@ if(SHOCKWAVE_BUILD_TESTS)
     )
 
     catch_discover_tests(shockwave-test)
+
+    generates_compile_commands(shockwave-test)
 
     add_subdirectory(test)
 

@@ -41,3 +41,16 @@ macro(shockwave_add_library target src...)
     shockwave_set_compile_options(${target})
     target_compile_definitions(${target} PRIVATE SHOCKWAVE_EXPORT)
 endmacro()
+
+macro(generates_compile_commands target)
+    # clangd only supports a single CompilationDatabase location.
+    # -> Copy the compile commands from out/[Debug | Release | ...] to out/
+    add_custom_command(
+        TARGET ${target}
+        POST_BUILD
+        COMMAND
+            ${PROJECT_SOURCE_DIR}/scripts/copy-compile-commands.py
+            "--from=${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json"
+            "--to=${CMAKE_CURRENT_SOURCE_DIR}/out/compile_commands.json"
+    )
+endmacro()
