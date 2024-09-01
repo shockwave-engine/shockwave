@@ -7,10 +7,10 @@ TEST_CASE("memory/allocator") {
     SECTION("rebind") {
         STATIC_REQUIRE(
             std::is_same_v<std::allocator<int>,
-                           sw::rebind<std::allocator<float>>::to<int>>);
+                           sw::rebind_to<std::allocator<float>, int>>);
 
         STATIC_REQUIRE_FALSE(
             std::is_same_v<std::allocator<int>,
-                           sw::rebind<std::allocator<int>>::to<float>>);
+                           sw::rebind_to<std::allocator<int>, float>>);
     }
 }
