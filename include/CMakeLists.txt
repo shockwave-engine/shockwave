@@ -7,4 +7,7 @@ target_sources(
            shockwave/memory/allocator.h
            shockwave/memory/Pool.h
            shockwave/utility/assert.h
+           shockwave/utility/types.h
+           shockwave/utility/repeat.h
+           shockwave/math/matrix.h
 )
