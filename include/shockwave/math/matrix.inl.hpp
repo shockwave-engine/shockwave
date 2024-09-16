@@ -5,64 +5,98 @@
 namespace sw
 {
 
-template<class T, u32 m, u32 n>
-template<class U>
-Matrix<T, m, n> Matrix<T, m, n>::fromRows(
-    const std::initializer_list<Vector<U, n>>& rows) {
-    return fromRows(Vector<Vector<U, n>, m>{rows});
-}
+////////////////////////////////////////////////////////////
+/// \brief Return x such that Ax = b
+///
+////////////////////////////////////////////////////////////
+template<class T, class U, u32 n>
+inline Vector<Promoted<T, U>, n> solve(const Matrix<T, n, n>& A,
+                                       const Vector<U, n>&    b);
 
-template<class T, u32 m, u32 n>
-template<class U>
-Matrix<T, m, n> Matrix<T, m, n>::fromRows(const Vector<Vector<U, n>, m>& rows) {
-    Matrix mat{};
+template<class T, u32 n>
+class Solver
+{
+public:
 
-    auto it = mat.begin();
-    for ( const auto& row : rows )
-        for ( const auto& val : row )
-            *it++ = val;
+    inline Solver(const Matrix<T, n, n>& A);
 
-    return mat;
-}
+    template<class U>
+    inline Vector<Promoted<T, U>, n> solve(const Vector<U, n>& b) const;
 
-template<class T, u32 m, u32 n>
-template<class U>
-Matrix<T, m, n> Matrix<T, m, n>::fromCols(
-    const std::initializer_list<Vector<U, m>>& cols) {
-    return transpose(Matrix<T, n, m>::fromRows(cols));
-}
+    Matrix<T, n, n> original() const { return transpose(QT_) * R_; }
 
-template<class T, u32 m, u32 n>
-template<class U>
-Matrix<T, m, n> Matrix<T, m, n>::fromCols(const Vector<Vector<U, m>, n>& cols) {
-    return transpose(Matrix<T, n, m>::fromRows(cols));
-}
+    bool isValid() const { return isValid_; }
 
-template<class T, u32 m, u32 n>
-Matrix<T, m, n> Matrix<T, m, n>::filled(T val) {
-    Matrix<T, m, n> mat{};
-    for ( auto& elem : mat )
-        elem = val;
+private:
 
-    return mat;
-}
+    Matrix<T, n, n> QT_;
+    Matrix<T, n, n> R_;
+    bool            isValid_ = true;
+};
 
-template<class T, u32 m, u32 n>
-Vector<Vector<T, n>, m> Matrix<T, m, n>::asRows() const {
-    Vector<Vector<T, n>, m> rows{};
 
-    auto it = this->begin();
-    for ( Vector<T, n>& row : rows )
-        for ( T& val : row )
-            val = *it++;
+template<class T, u32 n>
+inline Matrix<T, n, n> invert(const Matrix<T, n, n>& mat);
 
-    return rows;
-}
 
-template<class T, u32 m, u32 n>
-Vector<Vector<T, m>, n> Matrix<T, m, n>::asCols() const {
-    return transpose(*this).asRows();
-}
+////////////////////////////////////////////////////////////
+/// \brief Return x such that Ax >= b with bounds on x
+///
+/// proj must project x onto its valid bounds (ie clamp its values). With
+/// the following signature:
+///     T proj(const Vector<T, n>& x, u32 index)
+/// where x[index] must be clamped and returned.
+///
+/// when the absolute change of components of x drops below epsilon,
+/// iteration terminates.
+///
+/// Uses projected Gauss-Seidel to solve the MLCP,
+/// See A. Enzenhofer's master thesis (McGill): Numerical Solutions of MLCP
+////////////////////////////////////////////////////////////
+template<class T, u32 n, std::invocable<Vector<T, n>, u32> Proj>
+inline Vector<T, n> solveInequalities(const Matrix<T, n, n>& A,
+                                      Vector<T, n>           b,
+                                      Proj                   proj,
+                                      Vector<T, n>           initialGuess
+                                      = Vector<T, n>{},
+                                      float epsilon = sw::EPSILON);
+
+////////////////////////////////////////////////////////////
+/// \brief Return x such that Ax >= b with bounds on x
+///
+/// proj must project x onto its valid bounds (ie clamp its values).
+///
+/// when the absolute change of components of x drops below epsilon,
+/// iteration terminates.
+///
+/// Uses projected Gauss-Seidel to solve the MLCP,
+/// See A. Enzenhofer's master thesis (McGill): Numerical Solutions of MLCP
+////////////////////////////////////////////////////////////
+template<class T, u32 n, std::invocable<Vector<T, n>> Proj>
+inline Vector<T, n> solveInequalities(const Matrix<T, n, n>& A,
+                                      Vector<T, n>           b,
+                                      Proj                   proj,
+                                      Vector<T, n>           initialGuess
+                                      = Vector<T, n>{},
+                                      float epsilon = sw::EPSILON);
+
+
+////////////////////////////////////////////////////////////
+/// \brief Solves the LCP Ax >= b with x >= 0
+///
+/// This gives Ax - b = w with the residuals w >= 0,
+///     the complementarity condition is dot(x, w) = 0
+///     (xi = 0 or wi = 0 for each index i)
+///
+/// Uses total enumeration, taken from box2d's contact solver.
+/// If no value is returned, the LCP had no solution.
+///
+////////////////////////////////////////////////////////////
+template<class T>
+inline Vector<T, 2> solveLcp(const Matrix<T, 2, 2>& A, const Vector<T, 2>& b);
+
+template<class T>
+class LcpSolver;
 
 
 template<class T>
@@ -231,34 +265,37 @@ public:
     }
 
     template<class U>
-    Vector<Promoted<T, U>, 2> solve(const Vector<U, 2>& b) const {
-        Vector<T, 2> x = solver.solve(b);
-        if ( all(x >= Vector<T, 2>::filled(0.f)) )
-            return x;
+    if ( (x >= Vector<T, 2>::filled(0.f)).all() ) Vector<T, 2> x
+        = solver.solve(b);
+    if ( all(x >= Vector<T, 2>::filled(0.f)) )
+        return x;
 
-        x = Vector<T, 2>{b[0] * invA11, 0.f};
-        if ( (x[0] >= 0.f) && (x[0] * solver.A_(1, 0) - b[1] >= 0) )
-            return x;
+    x = Vector<T, 2>{b[0] * invA11, 0.f};
+    if ( (x[0] >= 0.f) && (x[0] * solver.A_(1, 0) - b[1] >= 0) )
+        return x;
 
-        x = Vector<T, 2>{0.f, b[1] * invA22};
-        if ( (x[1] >= 0.f) && (x[1] * solver.A_(0, 1) - b[0] >= 0) )
-            return x;
-
+    x = Vector<T, 2>{0.f, b[1] * invA22};
+    if ( (x[1] >= 0.f) && (x[1] * solver.A_(0, 1) - b[0] >= 0) )
+        return x;
+    if ( (-b >= Vector<T, 2>::filled(0.f)).all() )
         x = Vector<T, 2>{};
-        if ( all(-b >= Vector<T, 2>::filled(0.f)) )
-            return x;
+    if ( all(-b >= Vector<T, 2>::filled(0.f)) )
+        return x;
 
-        return x;  // all null
-    }
+    return x;  // all null
+}
 
-    Matrix<T, 2, 2> original() const { return solver.original(); }
-    bool            isValid() const { return solver.isValid(); }
+Matrix<T, 2, 2>
+original() const {
+    return solver.original();
+}
+bool isValid() const { return solver.isValid(); }
 
 private:
 
-    Solver<T, 2> solver;
-    float        invA11;
-    float        invA22;
+Solver<T, 2> solver;
+float        invA11;
+float        invA22;
 };
 
 template<class T>

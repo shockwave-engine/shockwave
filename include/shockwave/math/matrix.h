@@ -4,6 +4,7 @@
 #include <compare>
 #include <functional>
 #include <initializer_list>
+#include <ostream>
 #include <type_traits>
 #include <cmath>
 #include <utility>
@@ -52,30 +53,24 @@ struct MatrixData
 
     using Bool = Mat<bool>;
 
-
     ////////////////////////////////////////////////////////////
     // Constructors
     ////////////////////////////////////////////////////////////
 
+private:
+
+    template<std::invocable<std::size_t> Generator, std::size_t... Is>
+    constexpr MatrixData(Generator&& generate, std::index_sequence<Is...>)
+        : data{generate(Is)...} {}
+
+public:
+
     constexpr MatrixData() = default;
 
-    template<class... Args>
-    constexpr MatrixData(Args&&... values)
-        : MatrixData({static_cast<T>(std::forward<Args>(values))...}) {}
-
-    constexpr MatrixData(std::initializer_list<T> values) {
-        for ( u32 i = 0; i < size(); i++ ) {
-            data[i] = i < values.size() ? *(values.begin() + i) : T{};
-        }
-    }
-
-    template<class U>
-    explicit constexpr MatrixData(const Mat<U>& other) {
-        for ( u32 i = 0; i < size(); i++ ) {
-            data[i] = static_cast<T>(other.data[i]);
-        }
-    }
-
+    template<std::invocable<u32> Fn>
+    constexpr MatrixData(Fn&& generator)
+        : MatrixData(std::forward<Fn>(generator),
+                     std::make_index_sequence<size()>()) {}
 
     ////////////////////////////////////////////////////////////
     // Indexing
@@ -83,47 +78,61 @@ struct MatrixData
 
     constexpr static u32 size() { return m_rows * n_cols; }
 
-    T&       operator()(u32 row, u32 col) { return data[row * n_cols + col]; }
-    const T& operator()(u32 row, u32 col) const {
-        return data[row * n_cols + col];
+    constexpr static u32 to_index(u32 row, u32 col) {
+        return row * n_cols + col;
     }
 
-    T&       operator[](u32 index) { return data[index]; }
-    const T& operator[](u32 index) const { return data[index]; }
+    constexpr u32 static to_row(u32 index) { return index / n_cols_; }
+    constexpr u32 static to_col(u32 index) { return index % n_cols_; }
 
-    iterator begin() { return data; }
-    iterator end() { return data + size(); }
+    T& operator()(u32 row, u32 col) { return this->data[to_index(row, col)]; }
+    const T& operator()(u32 row, u32 col) const {
+        return this->data[to_index(row, col)];
+    }
 
-    const_iterator begin() const { return data; }
-    const_iterator end() const { return data + size(); }
+    T&       operator[](u32 index) { return this->data[index]; }
+    const T& operator[](u32 index) const { return this->data[index]; }
+
+    iterator begin() { return this->data; }
+    iterator end() { return this->data + size(); }
+
+    const_iterator begin() const { return this->data; }
+    const_iterator end() const { return this->data + size(); }
 
     ////////////////////////////////////////////////////////////
     // Operations
     ////////////////////////////////////////////////////////////
 
     template<std::invocable<const T&> Fn>
-    static Mat<std::result_of<Fn(const T&)>> unary_element_wise(const Self& mat,
-                                                                Fn&& fn) {
-        Mat<std::result_of<Fn(const T&)>> res{mat};
-        for ( T& value : res ) {
-            value = fn(value);
-        }
-
-        return res;
+    static Mat<std::result_of_t<Fn(const T&)>> unary_element_wise(
+        const Self& mat,
+        Fn&&        fn) {
+        return Mat<std::result_of_t<Fn(const T&)>>(
+            [&](u32 i) { return fn(mat[i]); });
     }
 
-    template<class U, std::invocable<const T&> Fn>
-    static Mat<std::result_of<Fn(const T&, const U&)>>
+    template<class U, std::invocable<const T&, const U&> Fn>
+    static Mat<std::result_of_t<Fn(const T&, const U&)>>
     element_wise(const Self& lhs, const Mat<U>& rhs, Fn&& fn) {
-        Mat<std::result_of<Fn(const T&, const U&)>> res;
-
-        for ( u32 i = 0; i < lhs.size(); i++ ) {
-            res[i] = fn(lhs[i], rhs[i]);
-        }
-
-        return res;
+        return Mat<std::result_of_t<Fn(const T&, const U&)>>(
+            [&](u32 i) { return fn(lhs[i], rhs[i]); });
     }
 
+    ////////////////////////////////////////////////////////////
+    // Debug
+    ////////////////////////////////////////////////////////////
+
+    friend std::ostream& operator<<(std::ostream& os, const Self& mat) {
+        os << '{';
+        for ( u32 i = 0; i < m_rows_; i++ ) {
+            os << '{';
+            for ( u32 j = 0; j < n_cols_; j++ ) {
+                os << mat(i, j) << (j == n_cols_ - 1 ? "}" : ", ");
+            }
+        }
+
+        return os << '}';
+    }
 
     T data[size()];
 };
@@ -139,22 +148,26 @@ struct MatrixOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
     using Base::Base;
 
     template<class U = T, u32 m = Base::m_rows, u32 n = Base::n_cols>
-    using Result = Derived<std::common_type_t<T, U>, m, n>;
+    using Result = Base::template Result<U, m, n>;
 
     template<class U = T, u32 m = Base::m_rows, u32 n = Base::n_cols>
-    using Mat = Derived<U, m, n>;
+    using Mat = Base::template Mat<U, m, n>;
 
     using Self = Mat<>;
 
     using Bool = Mat<bool>;
 
+    template<class U>
+    using Cmp = Mat<std::compare_three_way_result_t<T, U>>;
+
     ////////////////////////////////////////////////////////////
     // Unary operators
     ////////////////////////////////////////////////////////////
 
-    Result<> operator+() const { return *this; }
+    Result<> operator+() const { return static_cast<const Self&>(*this); }
     Result<> operator-() const {
-        return Base::unary_element_wise(*this, std::negate<>());
+        return Base::unary_element_wise(static_cast<const Self&>(*this),
+                                        std::negate<>());
     }
 
     ////////////////////////////////////////////////////////////
@@ -171,13 +184,13 @@ struct MatrixOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
         return Base::element_wise(lhs, rhs, std::minus<>());
     }
 
-    template<class U>
+    template<class U, std::enable_if_t<std::is_arithmetic_v<U>, bool> = true>
     friend Result<U> operator*(U scalar, const Self& mat) {
         return Base::unary_element_wise(mat,
                                         [=](const T& x) { return x * scalar; });
     }
 
-    template<class U>
+    template<class U, std::enable_if_t<std::is_arithmetic_v<U>, bool> = true>
     friend Result<U> operator*(const Self& mat, U scalar) {
         return scalar * mat;
     }
@@ -194,22 +207,26 @@ struct MatrixOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
 
     template<class U>
     Self& operator+=(const Mat<U>& other) {
-        return *this = *this + other;
+        return static_cast<Self&>(*this
+                                  = static_cast<const Self&>(*this) + other);
     }
 
     template<class U>
     Self& operator-=(const Mat<U>& other) {
-        return *this = *this - other;
+        return static_cast<Self&>(*this
+                                  = static_cast<const Self&>(*this) - other);
     }
 
     template<class U>
     Self& operator*=(U scalar) {
-        return *this = *this * scalar;
+        return static_cast<Self&>(*this
+                                  = static_cast<const Self&>(*this) * scalar);
     }
 
     template<class U>
     Self& operator/=(U scalar) {
-        return *this = *this / scalar;
+        return static_cast<Self&>(*this
+                                  = static_cast<const Self&>(*this) / scalar);
     }
 
     ////////////////////////////////////////////////////////////
@@ -263,7 +280,7 @@ struct MatrixOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
     }
 
     template<class U>
-    friend Result<U> min(const Self& lhs, const Mat<U>& rhs) {
+    friend auto min(const Self& lhs, const Mat<U>& rhs) {
         return Base::element_wise(lhs, rhs, [](const T& x) {
             using namespace std;
             return min(x);
@@ -271,7 +288,7 @@ struct MatrixOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
     }
 
     template<class U>
-    friend Result<U> max(const Self& lhs, const Mat<U>& rhs) {
+    friend auto max(const Self& lhs, const Mat<U>& rhs) {
         return Base::element_wise(lhs, rhs, [](const T& x) {
             using namespace std;
             return max(x);
@@ -284,8 +301,7 @@ struct MatrixOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
     ////////////////////////////////////////////////////////////
 
     template<class U>
-    friend Mat<std::strong_ordering> operator<=>(const Self&   lhs,
-                                                 const Mat<U>& rhs) {
+    friend Cmp<U> operator<=>(const Self& lhs, const Mat<U>& rhs) {
         return Base::element_wise(lhs, rhs, std::compare_three_way());
     }
 
@@ -301,22 +317,22 @@ struct MatrixOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
 
     template<class U>
     friend Bool operator<(const Self& lhs, const Mat<U>& rhs) {
-        return (lhs <=> rhs) == std::strong_ordering::less;
+        return lhs <=> rhs == Cmp<U>::filled(std::strong_ordering::less);
     }
 
     template<class U>
     friend Bool operator<=(const Self& lhs, const Mat<U>& rhs) {
-        return (lhs <=> rhs) != std::strong_ordering::greater;
+        return (lhs <=> rhs) != Cmp<U>::filled(std::strong_ordering::greater);
     }
 
     template<class U>
     friend Bool operator>(const Self& lhs, const Mat<U>& rhs) {
-        return (lhs <=> rhs) == std::strong_ordering::greater;
+        return (lhs <=> rhs) == Cmp<U>::filled(std::strong_ordering::greater);
     }
 
     template<class U>
     friend Bool operator>=(const Self& lhs, const Mat<U>& rhs) {
-        return (lhs <=> rhs) != std::strong_ordering::less;
+        return (lhs <=> rhs) != Cmp<U>::filled(std::strong_ordering::less);
     }
 };
 
@@ -336,7 +352,8 @@ struct MatrixOperations<bool, m_rows_, n_cols_, Derived>
     ////////////////////////////////////////////////////////////
 
     Bool operator!() const {
-        return Base::unary_element_wise(*this, std::logical_not<>());
+        return Base::unary_element_wise(static_cast<const Self&>(*this),
+                                        std::logical_not<>());
     }
 
     ////////////////////////////////////////////////////////////
@@ -355,9 +372,17 @@ struct MatrixOperations<bool, m_rows_, n_cols_, Derived>
     // Reductions
     ////////////////////////////////////////////////////////////
 
-    bool all() { std::all_of(this->begin(), this->end(), std::identity()); }
-    bool any() { std::any_of(this->begin(), this->end(), std::identity()); }
-    bool none() { std::none_of(this->begin(), this->end(), std::identity()); }
+    bool all() {
+        return std::all_of(this->begin(), this->end(), std::identity());
+    }
+
+    bool any() {
+        return std::any_of(this->begin(), this->end(), std::identity());
+    }
+
+    bool none() {
+        return std::none_of(this->begin(), this->end(), std::identity());
+    }
 };
 
 
@@ -376,22 +401,33 @@ template<class T,
          u32 m_rows_,
          u32 n_cols_,
          template<class, u32, u32>
-         class Derived>
-struct VectorOperations : public MatrixData<T, m_rows_, n_cols_, Derived>
+         class Derived,
+         class = void>
+struct VectorOperations : public MatrixOperations<T, m_rows_, n_cols_, Derived>
 {
+    using Base = MatrixOperations<T, m_rows_, n_cols_, Derived>;
+    using Base::Base;
 };
 
 template<u32 m_rows_, u32 n_cols_, template<class, u32, u32> class Derived>
-struct VectorOperations<bool, m_rows_, n_cols_, Derived>
-    : public MatrixData<bool, m_rows_, n_cols_, Derived>
+struct VectorOperations<bool, m_rows_, n_cols_, Derived, void>
+    : public MatrixOperations<bool, m_rows_, n_cols_, Derived>
 {
+    using Base = MatrixOperations<bool, m_rows_, n_cols_, Derived>;
+    using Base::Base;
 };
 
 template<class T, u32 m_rows_, template<class, u32, u32> class Derived>
-struct VectorOperations<T, m_rows_, 1, Derived>
-    : public MatrixData<T, m_rows_, 1, Derived>
+struct VectorOperations<T,
+                        m_rows_,
+                        1,
+                        Derived,
+                        std::enable_if_t<!std::is_same_v<bool, T>>>
+    : public MatrixOperations<T, m_rows_, 1, Derived>
 {
-    using Base = MatrixData<T, m_rows_, 1, Derived>;
+    using Base = MatrixOperations<T, m_rows_, 1, Derived>;
+    using Base::Base;
+
     using Self = Base::Self;
 
     template<class U>
@@ -402,11 +438,16 @@ struct VectorOperations<T, m_rows_, 1, Derived>
     T norm_squared() const { return this->dot(*this); }
     T norm() const { return std::sqrt(norm_squared()); }
 
-    Self normalized() const { return *this / norm(); }
+    Self normalized() const { return static_cast<const Self&>(*this) / norm(); }
 
     template<class U>
     auto projected_on(const Vector<U, m_rows_>& that) const {
         return that * this->dot(that) / that.norm_squared();
+    }
+
+    template<class U>
+    auto element_wise_mul(const Vector<U, m_rows_>& rhs) const {
+        return Base::element_wise(*this, rhs, std::multiplies<>());
     }
 };
 
@@ -417,15 +458,20 @@ template<class T,
          class Derived>
 struct Vec2Operations : public VectorOperations<T, m_rows_, n_cols_, Derived>
 {
+    using Base = VectorOperations<T, m_rows_, n_cols_, Derived>;
+    using Base::Base;
 };
 
 template<class T, template<class, u32, u32> class Derived>
 struct Vec2Operations<T, 2, 1, Derived>
     : public VectorOperations<T, 2, 1, Derived>
 {
-    constexpr auto perp(bool clockwise) const {
-        return clockwise ? -this->perp(false)
-                         : Derived{-this->data[1], this->data[0]};
+    using Base = VectorOperations<T, 2, 1, Derived>;
+    using Base::Base;
+
+    constexpr auto perp(bool clockwise = false) const {
+        return clockwise ? Derived<T, 2, 1>{this->data[1], -this->data[0]}
+                         : Derived<T, 2, 1>{-this->data[1], this->data[0]};
     }
 
     template<class U>
@@ -439,14 +485,19 @@ template<class T,
          u32 n_cols_,
          template<class, u32, u32>
          class Derived>
-struct Vec3Operations : public VectorOperations<T, m_rows_, n_cols_, Derived>
+struct Vec3Operations : public Vec2Operations<T, m_rows_, n_cols_, Derived>
 {
+    using Base = Vec2Operations<T, m_rows_, n_cols_, Derived>;
+    using Base::Base;
 };
 
 template<class T, template<class, u32, u32> class Derived>
 struct Vec3Operations<T, 3, 1, Derived>
-    : public VectorOperations<T, 3, 1, Derived>
+    : public Vec2Operations<T, 3, 1, Derived>
 {
+    using Base = Vec2Operations<T, 3, 1, Derived>;
+    using Base::Base;
+
     template<class U>
     using Result = Derived<std::common_type_t<T, U>, 3, 1>;
 
@@ -463,32 +514,64 @@ struct Vec3Operations<T, 3, 1, Derived>
 
 
 template<class T, u32 m, u32 n, template<class, u32, u32> class Derived>
-struct StaticConstructors : public MatrixOperations<T, 1, 1, Derived>
+struct StaticConstructors : public Vec3Operations<T, m, n, Derived>
 {
+    using Base = Vec3Operations<T, m, n, Derived>;
+    using Base::Base;
 };
 
 template<class T, u32 dim, template<class, u32, u32> class Derived>
 struct StaticConstructors<T, dim, dim, Derived>
-    : public MatrixOperations<T, dim, dim, Derived>
+    : public Vec3Operations<T, dim, dim, Derived>
 {
-    static inline Matrix<T, dim, dim> identity();
-    static inline Matrix<T, dim, dim> diagonal(const Vector<T, dim>& elements);
+    using Base = Vec3Operations<T, dim, dim, Derived>;
+    using Base::Base;
+
+    using Mat = Derived<T, dim, dim>;
+
+    static inline Mat identity() {
+        return diagonal(Vector<T, dim>::filled(T{1}));
+    }
+
+    static inline Mat diagonal(const Vector<T, dim>& elements) {
+        return Mat([&](u32 i) constexpr {
+            return Base::to_row(i) == Base::to_col(i)
+                     ? elements[Base::to_row(i)]
+                     : T{};
+        });
+    }
 };
 
 template<class T, u32 dim, template<class, u32, u32> class Derived>
 struct StaticConstructors<T, dim, 1, Derived>
-    : public MatrixOperations<T, dim, 1, Derived>
+    : public Vec3Operations<T, dim, 1, Derived>
 {
-    static inline Vector<T, dim> i();
-    static inline Vector<T, dim> j();
-    static inline Vector<T, dim> k();
-    static inline Vector<T, dim> w();
+    using Base = Vec3Operations<T, dim, 1, Derived>;
+    using Base::Base;
+
+    using Vec = Derived<T, dim, 1>;
+
+    static inline Vec i() {
+        return Vec([](u32 i) { return i == 0 ? T{1} : T{}; });
+    }
+    static inline Vec j() {
+        return Vec([](u32 i) { return i == 1 ? T{1} : T{}; });
+    }
+    static inline Vec k() {
+        return Vec([](u32 i) { return i == 2 ? T{1} : T{}; });
+    }
+    static inline Vec w() {
+        return Vec([](u32 i) { return i == 3 ? T{1} : T{}; });
+    }
 };
 
 template<class T, template<class, u32, u32> class Derived>
 struct StaticConstructors<T, 1, 1, Derived>
-    : public MatrixOperations<T, 1, 1, Derived>
+    : public Vec3Operations<T, 1, 1, Derived>
 {
+    using Base = Vec3Operations<T, 1, 1, Derived>;
+    using Base::Base;
+
     explicit operator T() const { return this->data[0]; }
 };
 
@@ -502,134 +585,103 @@ struct StaticConstructors<T, 1, 1, Derived>
 template<class T, u32 m, u32 n>
 struct Matrix : public StaticConstructors<T, m, n, Matrix>
 {
-    static inline Matrix filled(T val);
+    using Base = StaticConstructors<T, m, n, Matrix>;
+
+    ////////////////////////////////////////////////////////////
+    // Constructors
+    ////////////////////////////////////////////////////////////
+
+    constexpr Matrix() = default;
+
+    template<std::invocable<u32> Fn>
+    constexpr Matrix(Fn&& generator) : Base(std::forward<Fn>(generator)) {}
+
+    template<class... Args,
+             std::enable_if_t<(sizeof...(Args) > 1), bool> = true>
+    constexpr Matrix(Args&&... values)
+        : Matrix({static_cast<T>(std::forward<Args>(values))...}) {}
+
+    constexpr Matrix(std::initializer_list<T> values) {
+        for ( u32 i = 0; i < this->size(); i++ ) {
+            this->data[i] = i < values.size() ? *(values.begin() + i) : T{};
+        }
+    }
 
     template<class U>
-    static inline Matrix fromRows(
-        const std::initializer_list<Vector<U, n>>& rows);
+    explicit constexpr Matrix(const Matrix<U, m, n>& other) {
+        for ( u32 i = 0; i < this->size(); i++ ) {
+            this->data[i] = static_cast<T>(other.data[i]);
+        }
+    }
+
+    ////////////////////////////////////////////////////////////
+    // Static Constructors
+    ////////////////////////////////////////////////////////////
+
+    static inline Matrix filled(T val) {
+        return Matrix([=](auto) { return val; });
+    }
+
+    template<class... Args, std::enable_if_t<sizeof...(Args) == m, bool> = true>
+    static inline Matrix from_rows(Args&&... rows) {
+        return from_rows({std::forward<Args>(rows)...});
+    }
 
     template<class U>
-    static inline Matrix fromRows(const Vector<Vector<U, n>, m>& rows);
+    static inline Matrix from_rows(
+        const std::initializer_list<Vector<U, n>>& rows) {
+        return from_rows(Vector<Vector<U, n>, m>(rows));
+    }
 
     template<class U>
-    static inline Matrix fromCols(
-        const std::initializer_list<Vector<U, m>>& cols);
+    static inline Matrix from_rows(const Vector<Vector<U, n>, m>& rows) {
+        Matrix mat{};
+
+        auto it = mat.begin();
+        for ( const auto& row : rows )
+            for ( const auto& val : row )
+                *it++ = val;
+
+        return mat;
+    }
+
+    template<class... Args, std::enable_if_t<sizeof...(Args) == n, bool> = true>
+    static inline Matrix from_cols(Args&&... cols) {
+        return from_cols({std::forward<Args>(cols)...});
+    }
 
     template<class U>
-    static inline Matrix fromCols(const Vector<Vector<U, m>, n>& cols);
+    static inline Matrix from_cols(
+        const std::initializer_list<Vector<U, m>>& cols) {
+        return Matrix<T, n, m>::from_rows(cols).transposed();
+    }
 
-    inline Vector<Vector<T, n>, m> asRows() const;
-    inline Vector<Vector<T, m>, n> asCols() const;
+    template<class U>
+    static inline Matrix from_cols(const Vector<Vector<U, m>, n>& cols) {
+        return Matrix<T, n, m>::from_rows(cols).transposed();
+    }
+
+    ////////////////////////////////////////////////////////////
+    // As row / column vectors
+    ////////////////////////////////////////////////////////////
+
+    inline Vector<Vector<T, n>, m> as_rows() const {
+        Vector<Vector<T, n>, m> rows;
+
+        for ( u32 i = 0; i < m; i++ ) {
+            for ( u32 j = 0; j < n; j++ ) {
+                rows[i][j] = (*this)(i, j);
+            }
+        }
+
+        return rows;
+    }
+
+    inline Vector<Vector<T, m>, n> as_cols() const {
+        return this->transposed().as_rows();
+    }
 };
 
-
-////////////////////////////////////////////////////////////
-/// \brief Return x such that Ax = b
-///
-////////////////////////////////////////////////////////////
-template<class T, class U, u32 n>
-inline Vector<Promoted<T, U>, n> solve(const Matrix<T, n, n>& A,
-                                       const Vector<U, n>&    b);
-
-template<class T, u32 n>
-class Solver
-{
-public:
-
-    inline Solver(const Matrix<T, n, n>& A);
-
-    template<class U>
-    inline Vector<Promoted<T, U>, n> solve(const Vector<U, n>& b) const;
-
-    Matrix<T, n, n> original() const { return transpose(QT_) * R_; }
-
-    bool isValid() const { return isValid_; }
-
-private:
-
-    Matrix<T, n, n> QT_;
-    Matrix<T, n, n> R_;
-    bool            isValid_ = true;
-};
-
-
-template<class T, u32 n>
-inline Matrix<T, n, n> invert(const Matrix<T, n, n>& mat);
-
-
-////////////////////////////////////////////////////////////
-/// \brief Return x such that Ax >= b with bounds on x
-///
-/// proj must project x onto its valid bounds (ie clamp its values). With
-/// the following signature:
-///     T proj(const Vector<T, n>& x, u32 index)
-/// where x[index] must be clamped and returned.
-///
-/// when the absolute change of components of x drops below epsilon,
-/// iteration terminates.
-///
-/// Uses projected Gauss-Seidel to solve the MLCP,
-/// See A. Enzenhofer's master thesis (McGill): Numerical Solutions of MLCP
-////////////////////////////////////////////////////////////
-template<class T, u32 n, std::invocable<Vector<T, n>, u32> Proj>
-inline Vector<T, n> solveInequalities(const Matrix<T, n, n>& A,
-                                      Vector<T, n>           b,
-                                      Proj                   proj,
-                                      Vector<T, n>           initialGuess
-                                      = Vector<T, n>{},
-                                      float epsilon = sw::EPSILON);
-
-////////////////////////////////////////////////////////////
-/// \brief Return x such that Ax >= b with bounds on x
-///
-/// proj must project x onto its valid bounds (ie clamp its values).
-///
-/// when the absolute change of components of x drops below epsilon,
-/// iteration terminates.
-///
-/// Uses projected Gauss-Seidel to solve the MLCP,
-/// See A. Enzenhofer's master thesis (McGill): Numerical Solutions of MLCP
-////////////////////////////////////////////////////////////
-template<class T, u32 n, std::invocable<Vector<T, n>> Proj>
-inline Vector<T, n> solveInequalities(const Matrix<T, n, n>& A,
-                                      Vector<T, n>           b,
-                                      Proj                   proj,
-                                      Vector<T, n>           initialGuess
-                                      = Vector<T, n>{},
-                                      float epsilon = sw::EPSILON);
-
-
-////////////////////////////////////////////////////////////
-/// \brief Solves the LCP Ax >= b with x >= 0
-///
-/// This gives Ax - b = w with the residuals w >= 0,
-///     the complementarity condition is dot(x, w) = 0
-///     (xi = 0 or wi = 0 for each index i)
-///
-/// Uses total enumeration, taken from box2d's contact solver.
-/// If no value is returned, the LCP had no solution.
-///
-////////////////////////////////////////////////////////////
-template<class T>
-inline Vector<T, 2> solveLcp(const Matrix<T, 2, 2>& A, const Vector<T, 2>& b);
-
-template<class T>
-class LcpSolver;
-
-
-////////////////////////////////////////////////////////////
-// Vector operations
-////////////////////////////////////////////////////////////
-
-template<class T, class U, u32 dim>
-inline Vector<Promoted<T, U>, dim> elementWiseMul(const Vector<T, dim>& lhs,
-                                                  const Vector<U, dim>& rhs) {
-    Vector<Promoted<T, U>, dim> res;
-    for ( u32 i = 0; i < dim; ++i )
-        res[i] = lhs[i] * rhs[i];
-
-    return res;
-}
 
 ////////////////////////////////////////////////////////////
 // Aliases
